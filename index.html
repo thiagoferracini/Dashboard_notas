@@ -1,51 +1,180 @@
 <!DOCTYPE html>
-<html>
+<html lang="pt-br">
 <head>
-    <title>Importador XML - ZF</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Importador XML NF-e 55 - Ailog</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">
+    <style>
+        body { background-color: #f5f5f5; min-height: 100vh; }
+        .main-card { margin-top: 50px; padding: 30px; border-radius: 8px; background: white; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .log-container { margin-top: 20px; max-height: 200px; overflow-y: auto; background: #333; color: #00ff00; padding: 10px; font-family: monospace; font-size: 12px; border-radius: 4px; }
+    </style>
 </head>
-<body class="section">
-    <div class="container">
-        <h1 class="title">Importar Notas Fiscais (Modelo 55)</h1>
-        <input class="input" type="file" id="xmlFiles" accept=".xml" multiple>
-        <button class="button is-primary mt-3" onclick="processar()">Enviar para Planilha</button>
-        <div id="status" class="mt-3"></div>
-    </div>
+<body>
+    <section class="section">
+        <div class="container">
+            <div class="columns is-centered">
+                <div class="column is-8 main-card">
+                    <h1 class="title is-4">🚀 Importador de Notas Fiscais (XML)</h1>
+                    <p class="subtitle is-6">Selecione múltiplos arquivos XML para enviar à planilha.</p>
+                    
+                    <div class="field">
+                        <label class="label">Configuração Interna</label>
+                        <div class="field is-grouped">
+                            <p class="control is-expanded">
+                                <input class="input" type="text" id="codEmpresa" placeholder="Cód. Empresa (ex: 01)">
+                            </p>
+                            <p class="control is-expanded">
+                                <input class="input" type="text" id="codFilial" placeholder="Cód. Filial (ex: 101)">
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="field">
+                        <div class="file is-centered is-boxed is-primary has-name">
+                            <label class="file-label">
+                                <input class="file-input" type="file" id="xmlFiles" accept=".xml" multiple onchange="updateFileName()">
+                                <span class="file-cta">
+                                    <span class="file-icon">📤</span>
+                                    <span class="file-label">Escolher Arquivos…</span>
+                                </span>
+                                <span class="file-name" id="fileName">Nenhum arquivo selecionado</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <button class="button is-link is-fullwidth" id="btnEnviar" onclick="processarArquivos()">
+                        Enviar para Planilha
+                    </button>
+
+                    <div id="log" class="log-container" style="display:none;"></div>
+                </div>
+            </div>
+        </div>
+    </section>
 
     <script>
-        const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzVd95O8HsI5p9zkIBxQ62H5li5wbjOeJeDLDMkKbry3ZlnDTyltgyDlDBe6i-jX1p-4Q/exec"; // Cole a URL que você copiou do Google
+        const WEB_APP_URL = "SUA_URL_DO_GOOGLE_SCRIPT_AQUI"; 
 
-        async function processar() {
+        function updateFileName() {
+            const input = document.getElementById('xmlFiles');
+            const fileName = document.getElementById('fileName');
+            fileName.textContent = input.files.length + " arquivo(s) selecionado(s)";
+        }
+
+        function addLog(msg) {
+            const log = document.getElementById('log');
+            log.style.display = 'block';
+            log.innerHTML += "> " + msg + "<br>";
+            log.scrollTop = log.scrollHeight;
+        }
+
+        // Função auxiliar para pegar texto de tag com segurança
+        function getTag(parent, tagName, fallback = "") {
+            const el = parent.getElementsByTagName(tagName)[0];
+            return el ? el.textContent : fallback;
+        }
+
+        async function processarArquivos() {
             const files = document.getElementById('xmlFiles').files;
-            const statusDiv = document.getElementById('status');
-            
+            const btn = document.getElementById('btnEnviar');
+            const codE = document.getElementById('codEmpresa').value;
+            const codF = document.getElementById('codFilial').value;
+
+            if (files.length === 0) return alert("Selecione arquivos primeiro!");
+
+            btn.disabled = true;
+            btn.classList.add('is-loading');
+            addLog("Iniciando processamento de " + files.length + " arquivos...");
+
             for (let file of files) {
-                const text = await file.text();
-                const parser = new DOMParser();
-                const xmlDoc = parser.parseFromString(text, "text/xml");
+                try {
+                    const text = await file.text();
+                    const parser = new DOMParser();
+                    const xml = parser.parseFromString(text, "text/xml");
 
-                // Extraindo dados básicos (Exemplo de Tags do Modelo 55)
-                const dados = {
-                    cnpj_zf: xmlDoc.getElementsByTagName("dest")[0].getElementsByTagName("CNPJ")[0].textContent,
-                    cnpj_fornecedor: xmlDoc.getElementsByTagName("emit")[0].getElementsByTagName("CNPJ")[0].textContent,
-                    serie: xmlDoc.getElementsByTagName("serie")[0].textContent,
-                    numero: xmlDoc.getElementsByTagName("nNF")[0].textContent,
-                    chave: xmlDoc.getElementsByTagName("infNFe")[0].getAttribute("Id").replace("NFe", ""),
-                    valor_total: xmlDoc.getElementsByTagName("vNF")[0].textContent,
-                    descricao_item: xmlDoc.getElementsByTagName("xProd")[0].textContent,
-                    quantidade: xmlDoc.getElementsByTagName("qCom")[0].textContent
-                };
+                    // Dados do Cabeçalho e Emitente/Destinatário
+                    const infNFe = xml.getElementsByTagName("infNFe")[0];
+                    const ide = xml.getElementsByTagName("ide")[0];
+                    const emit = xml.getElementsByTagName("emit")[0];
+                    const dest = xml.getElementsByTagName("dest")[0];
+                    const enderEmit = emit.getElementsByTagName("enderEmit")[0];
+                    const total = xml.getElementsByTagName("ICMSTot")[0];
+                    const prot = xml.getElementsByTagName("nProt")[0];
 
-                // Enviando para o Google Sheets via POST
-                statusDiv.innerHTML = `Processando: ${file.name}...`;
-                
-                await fetch(WEB_APP_URL, {
-                    method: 'POST',
-                    mode: 'no-cors', // Evita erro de segurança (CORS)
-                    body: JSON.stringify(dados)
-                });
+                    const chave = infNFe.getAttribute("Id").replace("NFe", "");
+                    
+                    // Processar cada item da nota (Tag <det>)
+                    const itens = xml.getElementsByTagName("det");
+
+                    for (let i = 0; i < itens.length; i++) {
+                        const item = itens[i];
+                        const prod = item.getElementsByTagName("prod")[0];
+                        const imposto = item.getElementsByTagName("imposto")[0];
+
+                        // Mapeamento completo conforme sua tabela
+                        const payload = {
+                            cod_empresa: codE,
+                            cnpj_zf: getTag(dest, "CNPJ"),
+                            cod_filial: codF,
+                            cnpj_fornecedor: getTag(emit, "CNPJ"),
+                            serie: getTag(ide, "serie"),
+                            numero: getTag(ide, "nNF"),
+                            cod_participante: "",
+                            ie_posto: getTag(emit, "IE"),
+                            sigla_pais: "BRA",
+                            cod_municipio: getTag(enderEmit, "cMun"),
+                            logradouro: getTag(enderEmit, "xLgr"),
+                            num_endereco: getTag(enderEmit, "nro"),
+                            bairro: getTag(enderEmit, "xBairro"),
+                            cep: getTag(enderEmit, "CEP"),
+                            situacao: "Aprovada",
+                            chave_nfe: chave,
+                            protocolo: prot ? prot.textContent : "",
+                            data_emissao: getTag(ide, "dhEmi").substring(0, 10),
+                            valor_total_doc: getTag(total, "vNF"),
+                            desconto_total: getTag(total, "vDesc"),
+                            valor_mercadorias: getTag(total, "vProd"),
+                            outras_despesas: getTag(total, "vOutro"),
+                            seq_item: item.getAttribute("nItem"),
+                            cod_item: getTag(prod, "cProd"),
+                            ncm: getTag(prod, "NCM"),
+                            descricao_item: getTag(prod, "xProd"),
+                            quantidade: getTag(prod, "qCom"),
+                            unidade: getTag(prod, "uCom"),
+                            valor_total_item: getTag(prod, "vProd"),
+                            valor_desc_item: getTag(prod, "vDesc"),
+                            // Impostos (Exemplo básico de captura)
+                            bc_icms: getTag(imposto, "vBC"),
+                            aliq_icms: getTag(imposto, "pICMS"),
+                            valor_icms: getTag(imposto, "vICMS"),
+                            bc_icms_st: getTag(imposto, "vBCST"),
+                            aliq_icms_st: getTag(imposto, "pICMSST"),
+                            valor_icms_st: getTag(imposto, "vICMSST"),
+                            bc_pis: getTag(imposto, "vBC"), // Simplificado
+                            aliq_pis: getTag(imposto, "pPIS"),
+                            valor_pis: getTag(imposto, "vPIS"),
+                            bc_cofins: getTag(imposto, "vBC"), // Simplificado
+                            aliq_cofins: getTag(imposto, "pCOFINS"),
+                            valor_cofins: getTag(imposto, "vCOFINS")
+                        };
+
+                        await fetch(WEB_APP_URL, {
+                            method: 'POST',
+                            mode: 'no-cors',
+                            body: JSON.stringify(payload)
+                        });
+                    }
+                    addLog("Sucesso: Nota " + getTag(ide, "nNF"));
+                } catch (e) {
+                    addLog("Erro no arquivo " + file.name + ": " + e.message);
+                }
             }
-            statusDiv.innerHTML = "✅ Todas as notas foram enviadas!";
+
+            addLog("--- Fim do Processamento ---");
+            btn.disabled = false;
+            btn.classList.remove('is-loading');
         }
     </script>
 </body>
