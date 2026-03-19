@@ -2,166 +2,113 @@
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Importador Fiscal Ailog - NFe 55</title>
+    <title>Importador Fiscal Ailog</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">
     <style>
-        body { background-color: #f0f2f5; min-height: 100vh; padding: 20px; }
-        .upload-card { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
-        .log-area { margin-top: 20px; background: #282c34; color: #61dafb; padding: 15px; border-radius: 6px; font-family: 'Courier New', monospace; font-size: 0.85rem; max-height: 200px; overflow-y: auto; display: none; }
+        body { background-color: #f5f5f5; padding: 20px; }
+        .container { max-width: 800px; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        #log { margin-top: 20px; padding: 10px; background: #333; color: #0f0; font-family: monospace; font-size: 12px; border-radius: 5px; max-height: 200px; overflow-y: auto; display: none; }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="columns is-centered">
-            <div class="column is-7 upload-card">
-                <h1 class="title is-4 has-text-centered">🚀 Importador NFe (Combustíveis & ARLA)</h1>
-                
-                <div class="columns">
-                    <div class="column">
-                        <label class="label">Cód. Empresa</label>
-                        <input class="input" type="text" id="codEmpresa" placeholder="Ex: 01">
-                    </div>
-                    <div class="column">
-                        <label class="label">Cód. Filial</label>
-                        <input class="input" type="text" id="codFilial" placeholder="Ex: 101">
-                    </div>
-                </div>
-
-                <div class="field">
-                    <div class="file is-medium is-info is-boxed has-name is-fullwidth">
-                        <label class="file-label">
-                            <input class="file-input" type="file" id="xmlFiles" accept=".xml" multiple onchange="atualizarStatus()">
-                            <span class="file-cta">
-                                <span class="file-label has-text-centered">Selecionar XMLs</span>
-                            </span>
-                            <span class="file-name has-text-centered" id="file-status">Nenhum arquivo selecionado</span>
-                        </label>
-                    </div>
-                </div>
-
-                <button class="button is-primary is-fullwidth is-medium" id="btnEnviar" onclick="processarArquivos()">
-                    Processar e Enviar para Planilha
-                </button>
-
-                <div id="log" class="log-area"></div>
+        <h1 class="title is-4">🚀 Importador NFe (Combustíveis & ARLA)</h1>
+        <div class="columns">
+            <div class="column"><input class="input" type="text" id="codE" placeholder="Cód. Empresa"></div>
+            <div class="column"><input class="input" type="text" id="codF" placeholder="Cód. Filial"></div>
+        </div>
+        <div class="field">
+            <div class="file is-info is-boxed has-name is-fullwidth">
+                <label class="file-label">
+                    <input class="file-input" type="file" id="xmlFiles" accept=".xml" multiple onchange="document.getElementById('fn').innerText = this.files.length + ' arquivos'">
+                    <span class="file-cta"><span class="file-label">Escolher XMLs</span></span>
+                    <span class="file-name" id="fn">Nenhum arquivo...</span>
+                </label>
             </div>
         </div>
+        <button class="button is-primary is-fullwidth" id="btn" onclick="processar()">Processar e Enviar</button>
+        <div id="log"></div>
     </div>
 
     <script>
-        const WEB_APP_URL = "SUA_URL_DO_GOOGLE_SCRIPT_AQUI"; 
+        const URL = "SUA_URL_DO_GOOGLE_SCRIPT_AQUI"; 
 
-        function atualizarStatus() {
-            const input = document.getElementById('xmlFiles');
-            document.getElementById('file-status').innerText = input.files.length + " arquivo(s) pronto(s)";
-        }
-
-        function escreverLog(msg) {
-            const log = document.getElementById('log');
-            log.style.display = 'block';
-            log.innerHTML += `> ${msg}<br>`;
-            log.scrollTop = log.scrollHeight;
-        }
-
-        // Função para buscar tags de forma flexível (Array de tags para fallback)
-        function buscarTag(parent, tags) {
-            if (!parent) return "";
-            const listaTags = Array.isArray(tags) ? tags : [tags];
-            for (let t of listaTags) {
-                let el = parent.getElementsByTagName(t)[0];
+        function getT(p, n) {
+            if (!p) return "";
+            const tags = Array.isArray(n) ? n : [n];
+            for (let name of tags) {
+                let el = p.getElementsByTagName(name)[0];
                 if (el && el.textContent) return el.textContent;
             }
             return "";
         }
 
-        async function processarArquivos() {
+        async function processar() {
             const files = document.getElementById('xmlFiles').files;
-            const btn = document.getElementById('btnEnviar');
+            const log = document.getElementById('log');
+            if (files.length === 0) return alert("Selecione os arquivos!");
             
-            if (files.length === 0) return alert("Por favor, selecione os arquivos XML.");
+            log.style.display = 'block';
+            log.innerHTML = "Iniciando...";
 
-            btn.disabled = true;
-            btn.classList.add('is-loading');
-            escreverLog("Iniciando processamento...");
-
-            for (let file of files) {
+            for (let f of files) {
                 try {
-                    const texto = await file.text();
-                    const xml = new DOMParser().parseFromString(texto, "text/xml");
-
-                    // 1. Captura do Protocolo (fora da tag NFe)
-                    const protocolo = buscarTag(xml, "nProt");
-
-                    // 2. Estrutura da Nota
-                    const infNFe = xml.getElementsByTagName("infNFe")[0];
+                    const text = await f.text();
+                    const xml = new DOMParser().parseFromString(text, "text/xml");
+                    
+                    const nProt = getT(xml, "nProt");
+                    const inf = xml.getElementsByTagName("infNFe")[0];
                     const ide = xml.getElementsByTagName("ide")[0];
                     const emit = xml.getElementsByTagName("emit")[0];
                     const dest = xml.getElementsByTagName("dest")[0];
-                    const enderEmit = emit.getElementsByTagName("enderEmit")[0];
-                    const total = xml.getElementsByTagName("ICMSTot")[0];
-                    const chave = infNFe.getAttribute("Id").replace("NFe", "");
-
-                    // 3. Loop de Itens (Produtos)
+                    const endE = emit.getElementsByTagName("enderEmit")[0];
+                    const tot = xml.getElementsByTagName("ICMSTot")[0];
                     const itens = xml.getElementsByTagName("det");
 
                     for (let i = 0; i < itens.length; i++) {
-                        const item = itens[i];
-                        const prod = item.getElementsByTagName("prod")[0];
-                        const imposto = item.getElementsByTagName("imposto")[0];
+                        const it = itens[i];
+                        const prod = it.getElementsByTagName("prod")[0];
+                        const imp = it.getElementsByTagName("imposto")[0];
 
-                        // Payload ajustado para os nomes que o seu Google Script espera
                         const payload = {
-                            cod_empresa: document.getElementById('codEmpresa').value,
-                            cod_filial: document.getElementById('codFilial').value,
-                            cnpj_zf: buscarTag(dest, "CNPJ"),
-                            cnpj_fornecedor: buscarTag(emit, "CNPJ"),
-                            serie: buscarTag(ide, "serie"),
-                            numero: buscarTag(ide, "nNF"),
-                            cod_participante: "", 
-                            ie_posto: buscarTag(emit, "IE"),
+                            cod_empresa: document.getElementById('codE').value,
+                            cod_filial: document.getElementById('codF').value,
+                            cnpj_zf: getT(dest, "CNPJ"),
+                            cnpj_fornecedor: getT(emit, "CNPJ"),
+                            serie: getT(ide, "serie"),
+                            numero: getT(ide, "nNF"),
+                            cod_participante: "",
+                            ie_posto: getT(emit, "IE"),
                             sigla_pais: "BRA",
-                            cod_municipio: buscarTag(enderEmit, "cMun"),
-                            logradouro: buscarTag(enderEmit, "xLgr"),
-                            num_endereco: buscarTag(enderEmit, "nro"),
-                            bairro: buscarTag(enderEmit, "xBairro"),
-                            cep: buscarTag(enderEmit, "CEP"),
+                            cod_municipio: getT(endE, "cMun"),
+                            logradouro: getT(endE, "xLgr"),
+                            num_endereco: getT(endE, "nro"),
+                            bairro: getT(endE, "xBairro"),
+                            cep: getT(endE, "CEP"),
                             situacao: "Aprovada",
-                            chave_nfe: chave,
-                            protocolo: protocolo,
-                            data_emissao: buscarTag(ide, "dhEmi").split("T")[0],
-                            valor_total_doc: buscarTag(total, "vNF"),
-                            descricao_item: buscarTag(prod, "xProd"),
-                            quantidade: buscarTag(prod, "qCom"),
-                            unidade: buscarTag(prod, "uCom"),
-                            ncm: buscarTag(prod, "NCM"),
-                            
-                            // Lógica para ICMS Monofásico (Diesel) vs Comum (ARLA/Etanol)
-                            bc_icms: buscarTag(imposto, ["qBCMonoRet", "vBC"]),
-                            aliq_icms: buscarTag(imposto, ["adRemICMSRet", "pICMS"]),
-                            valor_icms: buscarTag(imposto, ["vICMSMonoRet", "vICMS"]),
-                            
-                            // PIS e COFINS
-                            valor_pis: buscarTag(imposto, "vPIS"),
-                            valor_cofins: buscarTag(imposto, "vCOFINS")
+                            chave_nfe: inf.getAttribute("Id").replace("NFe", ""),
+                            protocolo: nProt,
+                            data_emissao: getT(ide, "dhEmi").split("T")[0],
+                            valor_total_doc: getT(tot, "vNF"),
+                            descricao_item: getT(prod, "xProd"),
+                            quantidade: getT(prod, "qCom"),
+                            unidade: getT(prod, "uCom"),
+                            ncm: getT(prod, "NCM"),
+                            bc_icms: getT(imp, ["qBCMonoRet", "vBC"]),
+                            aliq_icms: getT(imp, ["adRemICMSRet", "pICMS"]),
+                            valor_icms: getT(imp, ["vICMSMonoRet", "vICMS"]),
+                            valor_pis: getT(imp, "vPIS"),
+                            valor_cofins: getT(imp, "vCOFINS")
                         };
 
-                        // Envio para o Google Apps Script
-                        await fetch(WEB_APP_URL, {
-                            method: 'POST',
-                            mode: 'no-cors',
-                            body: JSON.stringify(payload)
-                        });
+                        await fetch(URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify(payload) });
                     }
-                    escreverLog(`✅ Nota ${buscarTag(ide, "nNF")} enviada.`);
-                } catch (erro) {
-                    escreverLog(`❌ Erro no arquivo ${file.name}: ${erro.message}`);
+                    log.innerHTML += `<br>✅ ${f.name} enviado.`;
+                } catch (e) {
+                    log.innerHTML += `<br>❌ Erro em ${f.name}: ${e.message}`;
                 }
             }
-
-            escreverLog("--- Processo Concluído ---");
-            btn.disabled = false;
-            btn.classList.remove('is-loading');
+            log.innerHTML += "<br>--- Finalizado ---";
         }
     </script>
 </body>
